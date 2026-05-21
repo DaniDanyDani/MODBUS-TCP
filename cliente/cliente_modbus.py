@@ -29,14 +29,16 @@ class ClienteMODBUS():
                     addr = input("Digite o endereço da tabela MODBUS: ")
                     nvezes = input("Digite o número de vezes que deseja ler: ")
                     for i in range(0, int(nvezes)):
-                        print(f"Leitura {i+1}: {self.lerDado(int(tipo), int(addr))}")
+                        print(f"Leitura {i+1}: {self.lerDado(int(tipo), int(addr))[0]} float")
+                        print(f"Leitura {i+1}: {self.lerDado(int(tipo), int(addr))[1]} bits")
                         sleep(self._scan_time)
 
                 elif sel == '2':
                     tipo = input("""Qual tipo de dado deseja escrever? (1- Holding Register | 2- Coil): """)
                     addr = input("Digite o endereço da tabela MODBUS: ")
-                    valor = input("Digite o valor que deseja escrever: ")
-                    ok = self.escreveDado(int(tipo), int(addr), float(valor))
+                    bin = input("Gostaria de mudar os bits? (s - sim / n - não)")
+                    valor = input("Digite o valor que deseja escrever: ") if bin == "n" else input("Digite a posição que deseja escrever: ")
+                    ok = self.escreveDadoFloat(int(tipo), int(addr), float(valor)) if bin == "n" else self.escreveDadoBits(int(tipo), int(addr), int(valor))
                     print("Escrita realizada." if ok else "Falha na escrita.")
 
                 elif sel == '3':
@@ -61,10 +63,13 @@ class ClienteMODBUS():
         # Holding Register (função 03)
         if tipo == 1:
             resp = self._cliente.read_holding_registers(address=addr, count=2, device_id=1)
-            resp = self._cliente.convert_from_registers(resp.registers, self._cliente.DATATYPE.FLOAT32)
             # if resp and not resp.isError():
             #     return resp.registers[0]
-            return resp
+            
+            resp_float = self._cliente.convert_from_registers(resp.registers, self._cliente.DATATYPE.FLOAT32)
+            resp_bit = self._cliente.convert_from_registers(resp.registers, self._cliente.DATATYPE.BITS)
+
+            return [resp_float, resp_bit]
 
         # Coil (função 01)
         if tipo == 2:
@@ -90,19 +95,40 @@ class ClienteMODBUS():
         # Tipo inválido
         return None
 
-    def escreveDado(self, tipo, addr, valor):
+    def escreveDadoFloat(self, tipo, addr, valor):
         """
         Método para a escrita de dados na Tabela MODBUS
         Retorna True em caso de sucesso, False em caso de falha.
         """
         # Holding Register (função 06 - single)
         if tipo == 1:
-            if isinstance(valor, float):
-                registers = self._cliente.convert_to_registers(valor, self._cliente.DATATYPE.FLOAT32)
-                resp = self._cliente.write_registers(address=addr, values=registers, device_id=1)
-            else:
-                resp = self._cliente.write_register(address=addr, value=valor, device_id=1)
+            registers = self._cliente.convert_to_registers(valor, self._cliente.DATATYPE.FLOAT32)
+            resp = self._cliente.write_registers(address=addr, values=registers, device_id=1)
             return bool(resp and not resp.isError())
+
+        # Coil (função 05 - single)
+        if tipo == 2:
+            # Em coils, valor esperado é 0/1 (False/True)
+            resp = self._cliente.write_coil(address=addr, value=bool(valor), device_id=1)
+            return bool(resp and not resp.isError())
+
+        # Tipo inválido
+        return False
+    
+    def escreveDadoBits(self, tipo, addr, valor):
+        """
+        Método para a escrita de dados na Tabela MODBUS
+        Retorna True em caso de sucesso, False em caso de falha.
+        """
+        # Holding Register (função 06 - single)
+        if tipo == 1:
+            bits = self._cliente.read_holding_registers(address=addr, count=2, device_id=1)
+            bits = self._cliente.convert_from_registers(bits.registers, self._cliente.DATATYPE.BITS)
+            print(f"Bits antes de mudar: {bits}")
+            bits[valor] = True if bits[valor] == False else False
+            print(f"Bits depois de mudar: {bits}")
+            registers = self._cliente.convert_to_registers(valor, self._cliente.DATATYPE.BITS)
+            resp = self._cliente.write_registers(address=addr, values=registers, device_id=1)
 
         # Coil (função 05 - single)
         if tipo == 2:
