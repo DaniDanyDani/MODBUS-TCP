@@ -1,4 +1,4 @@
-from clientemodbus import ClienteMODBUS
+from cliente_modbus import ClienteMODBUS
 
 c = ClienteMODBUS('localhost',502)
 c.atendimento()
