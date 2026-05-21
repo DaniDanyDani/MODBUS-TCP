@@ -36,7 +36,7 @@ class ClienteMODBUS():
                     tipo = input("""Qual tipo de dado deseja escrever? (1- Holding Register | 2- Coil): """)
                     addr = input("Digite o endereço da tabela MODBUS: ")
                     valor = input("Digite o valor que deseja escrever: ")
-                    ok = self.escreveDado(int(tipo), int(addr), int(valor))
+                    ok = self.escreveDado(int(tipo), int(addr), float(valor))
                     print("Escrita realizada." if ok else "Falha na escrita.")
 
                 elif sel == '3':
@@ -60,10 +60,11 @@ class ClienteMODBUS():
         """
         # Holding Register (função 03)
         if tipo == 1:
-            resp = self._cliente.read_holding_registers(address=addr, count=1, device_id=1)
-            if resp and not resp.isError():
-                return resp.registers[0]
-            return None
+            resp = self._cliente.read_holding_registers(address=addr, count=2, device_id=1)
+            resp = self._cliente.convert_from_registers(resp.registers, self._cliente.DATATYPE.FLOAT32)
+            # if resp and not resp.isError():
+            #     return resp.registers[0]
+            return resp
 
         # Coil (função 01)
         if tipo == 2:
@@ -96,7 +97,11 @@ class ClienteMODBUS():
         """
         # Holding Register (função 06 - single)
         if tipo == 1:
-            resp = self._cliente.write_register(address=addr, value=valor, device_id=1)
+            if isinstance(valor, float):
+                registers = self._cliente.convert_to_registers(valor, self._cliente.DATATYPE.FLOAT32)
+                resp = self._cliente.write_registers(address=addr, values=registers, device_id=1)
+            else:
+                resp = self._cliente.write_register(address=addr, value=valor, device_id=1)
             return bool(resp and not resp.isError())
 
         # Coil (função 05 - single)
