@@ -36,7 +36,7 @@ class ClienteMODBUS():
                 elif sel == '2':
                     tipo = input("""Qual tipo de dado deseja escrever? (1- Holding Register | 2- Coil): """)
                     addr = input("Digite o endereço da tabela MODBUS: ")
-                    bin = input("Gostaria de mudar os bits? (s - sim / n - não)")
+                    bin = input("Gostaria de mudar os bits? (s - sim / n - não) ")
                     valor = input("Digite o valor que deseja escrever: ") if bin == "n" else input("Digite a posição que deseja escrever: ")
                     ok = self.escreveDadoFloat(int(tipo), int(addr), float(valor)) if bin == "n" else self.escreveDadoBits(int(tipo), int(addr), int(valor))
                     print("Escrita realizada." if ok else "Falha na escrita.")
@@ -124,11 +124,12 @@ class ClienteMODBUS():
         if tipo == 1:
             bits = self._cliente.read_holding_registers(address=addr, count=2, device_id=1)
             bits = self._cliente.convert_from_registers(bits.registers, self._cliente.DATATYPE.BITS)
-            print(f"Bits antes de mudar: {bits}")
+            # print(f"Bits antes de mudar: {bits}")
             bits[valor] = True if bits[valor] == False else False
-            print(f"Bits depois de mudar: {bits}")
-            registers = self._cliente.convert_to_registers(valor, self._cliente.DATATYPE.BITS)
+            # print(f"Bits depois de mudar: {bits}")
+            registers = self._cliente.convert_to_registers(bits, self._cliente.DATATYPE.BITS)
             resp = self._cliente.write_registers(address=addr, values=registers, device_id=1)
+            return bool(resp and not resp.isError())
 
         # Coil (função 05 - single)
         if tipo == 2:
