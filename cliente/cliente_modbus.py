@@ -1,141 +1,175 @@
+"""
+Módulo Cliente MODBUS TCP.
+
+Este módulo implementa a classe ClienteMODBUS para comunicação com um servidor
+(CLP) utilizando o protocolo Modbus TCP através da biblioteca pymodbus.
+"""
+
 from pymodbus.client import ModbusTcpClient
-from time import sleep
 
-class ClienteMODBUS():
+
+class ClienteMODBUS:
     """
-    Classe Cliente MODBUS usando pymodbus
+    Cliente MODBUS para comunicação via protocolo TCP.
+
+    Gerencia a conexão e executa operações de leitura/escrita nas tabelas 
+    de dados do dispositivo escravo (CLP).
     """
-    def __init__(self, server_ip, porta, scan_time=1):
+
+    def __init__(self, server_ip: str, porta: int, device_id: int = 1) -> None:
         """
-        Construtor
+        Inicializa o cliente Modbus TCP.
+
+        Args:
+            server_ip (str): Endereço IP do servidor MODBUS.
+            porta (int): Porta de comunicação TCP do servidor.
+            device_id (int, opcional): ID do dispositivo na rede Modbus. Padrão é 1.
         """
-        # Cria o cliente TCP
         self._cliente = ModbusTcpClient(host=server_ip, port=porta)
-        self._scan_time = scan_time
+        self.device_id = device_id
 
-    def atendimento(self):
+    def conectar(self) -> bool:
         """
-        Método para atendimento do usuário
+        Abre a conexão com o servidor MODBUS.
+
+        Returns:
+            bool: True se a conexão foi bem sucedida, False caso contrário.
         """
-        # Abre a conexão com o servidor MODBUS
-        self._cliente.connect()
-        try:
-            atendimento = True
-            while atendimento:
-                sel = input("Deseja realizar uma leitura, escrita ou configuração? (1- Leitura | 2- Escrita | 3- Configuração | 4- Sair): ")
+        return self._cliente.connect()
 
-                if sel == '1':
-                    tipo = input("""Qual tipo de dado deseja ler? (1- Holding Register | 2- Coil | 3- Input Register | 4- Discrete Input): """)
-                    addr = input("Digite o endereço da tabela MODBUS: ")
-                    nvezes = input("Digite o número de vezes que deseja ler: ")
-                    for i in range(0, int(nvezes)):
-                        print(f"Leitura {i+1}: {self.lerDado(int(tipo), int(addr))[0]} float")
-                        print(f"Leitura {i+1}: {self.lerDado(int(tipo), int(addr))[1]} bits")
-                        sleep(self._scan_time)
+    def desconectar(self) -> None:
+        """Fecha a conexão TCP com o servidor."""
+        self._cliente.close()
 
-                elif sel == '2':
-                    tipo = input("""Qual tipo de dado deseja escrever? (1- Holding Register | 2- Coil): """)
-                    addr = input("Digite o endereço da tabela MODBUS: ")
-                    bin = input("Gostaria de mudar os bits? (s - sim / n - não) ")
-                    valor = input("Digite o valor que deseja escrever: ") if bin == "n" else input("Digite a posição que deseja escrever: ")
-                    ok = self.escreveDadoFloat(int(tipo), int(addr), float(valor)) if bin == "n" else self.escreveDadoBits(int(tipo), int(addr), int(valor))
-                    print("Escrita realizada." if ok else "Falha na escrita.")
-
-                elif sel == '3':
-                    scant = input("Digite o tempo de varredura desejado [s]: ")
-                    self._scan_time = float(scant)
-
-                elif sel == '4':
-                    atendimento = False
-                else:
-                    print("Seleção inválida")
-        except Exception as e:
-            print('Erro no atendimento: ', e.args)
-        finally:
-            # Fecha a conexão ao sair
-            self._cliente.close()
-
-    def lerDado(self, tipo, addr):
+    def ler_dado(self, tipo: int, addr: int):
         """
-        Método para leitura de um dado da Tabela MODBUS
-        Retorna o valor lido ou None em caso de falha.
+        Lê um dado da Tabela MODBUS baseado no tipo especificado.
+
+        Tipos suportados:
+            1: Holding Register (Função 03)
+            2: Coil (Função 01)
+            3: Input Register (Função 04)
+            4: Discrete Input (Função 02)
+
+        Args:
+            tipo (int): Código numérico representando o tipo de dado.
+            addr (int): Endereço de memória a ser lido.
+
+        Returns:
+            list | int | bool | None: Valor lido. Para Holding Registers, retorna
+            uma lista contendo os valores convertidos em float e bits.
+
+        Raises:
+            ConnectionError: Se houver falha de comunicação com o servidor.
         """
-        # Holding Register (função 03)
-        if tipo == 1:
-            resp = self._cliente.read_holding_registers(address=addr, count=2, device_id=1)
-            # if resp and not resp.isError():
-            #     return resp.registers[0]
-            
-            resp_float = self._cliente.convert_from_registers(resp.registers, self._cliente.DATATYPE.FLOAT32)
-            resp_bit = self._cliente.convert_from_registers(resp.registers, self._cliente.DATATYPE.BITS)
+        match tipo:
+            case 1:  # Holding Register
+                resp = self._cliente.read_holding_registers(
+                    address=addr, count=2, device_id=self.device_id
+                )
+                if resp.isError():
+                    raise ConnectionError(f"Falha ao ler Holding Register no endereço {addr}")
 
-            return [resp_float, resp_bit]
+                resp_float = self._cliente.convert_from_registers(
+                    resp.registers, self._cliente.DATATYPE.FLOAT32
+                )
+                resp_bit = self._cliente.convert_from_registers(
+                    resp.registers, self._cliente.DATATYPE.BITS
+                )
+                return [resp_float, resp_bit]
 
-        # Coil (função 01)
-        if tipo == 2:
-            resp = self._cliente.read_coils(address=addr, count=1, device_id=1)
-            if resp and not resp.isError():
+            case 2:  # Coil
+                resp = self._cliente.read_coils(
+                    address=addr, count=1, device_id=self.device_id
+                )
+                if resp.isError():
+                    raise ConnectionError(f"Falha ao ler Coil no endereço {addr}")
                 return resp.bits[0]
-            return None
 
-        # Input Register (função 04)
-        if tipo == 3:
-            resp = self._cliente.read_input_registers(address=addr, count=1, device_id=1)
-            if resp and not resp.isError():
+            case 3:  # Input Register
+                resp = self._cliente.read_input_registers(
+                    address=addr, count=1, device_id=self.device_id
+                )
+                if resp.isError():
+                    raise ConnectionError(f"Falha ao ler Input Register no endereço {addr}")
                 return resp.registers[0]
-            return None
 
-        # Discrete Input (função 02)
-        if tipo == 4:
-            resp = self._cliente.read_discrete_inputs(address=addr, count=1, device_id=1)
-            if resp and not resp.isError():
+            case 4:  # Discrete Input
+                resp = self._cliente.read_discrete_inputs(
+                    address=addr, count=1, device_id=self.device_id
+                )
+                if resp.isError():
+                    raise ConnectionError(f"Falha ao ler Discrete Input no endereço {addr}")
                 return resp.bits[0]
-            return None
 
-        # Tipo inválido
-        return None
+            case _:
+                return None
 
-    def escreveDadoFloat(self, tipo, addr, valor):
+    def escrever_dado_float(self, tipo: int, addr: int, valor: float) -> bool:
         """
-        Método para a escrita de dados na Tabela MODBUS
-        Retorna True em caso de sucesso, False em caso de falha.
+        Escreve um dado do tipo Float32 na Tabela MODBUS.
+
+        Args:
+            tipo (int): Código numérico (1 para Holding Register).
+            addr (int): Endereço de memória a ser escrito.
+            valor (float): Valor de ponto flutuante a ser escrito.
+
+        Returns:
+            bool: True em caso de sucesso, False em caso de falha ou tipo inválido.
         """
-        # Holding Register (função 06 - single)
-        if tipo == 1:
-            registers = self._cliente.convert_to_registers(valor, self._cliente.DATATYPE.FLOAT32)
-            resp = self._cliente.write_registers(address=addr, values=registers, device_id=1)
-            return bool(resp and not resp.isError())
+        if tipo == 1:  # Holding Register
+            registers = self._cliente.convert_to_registers(
+                valor, self._cliente.DATATYPE.FLOAT32
+            )
+            resp = self._cliente.write_registers(
+                address=addr, values=registers, device_id=self.device_id
+            )
+            return not resp.isError()
 
-        # Coil (função 05 - single)
-        if tipo == 2:
-            # Em coils, valor esperado é 0/1 (False/True)
-            resp = self._cliente.write_coil(address=addr, value=bool(valor), device_id=1)
-            return bool(resp and not resp.isError())
-
-        # Tipo inválido
         return False
     
-    def escreveDadoBits(self, tipo, addr, valor):
+    def escrever_dado_bits(self, tipo: int, addr: int, bit_pos: int) -> bool:
         """
-        Método para a escrita de dados na Tabela MODBUS
-        Retorna True em caso de sucesso, False em caso de falha.
+        Inverte o estado lógico de um bit em um Holding Register ou escreve em um Coil.
+
+        Args:
+            tipo (int): Código numérico (1 para Holding Register, 2 para Coil).
+            addr (int): Endereço de memória.
+            bit_pos (int): Posição do bit no Holding Register (0-15) ou o valor no Coil.
+
+        Returns:
+            bool: True em caso de sucesso, False em caso de falha ou tipo inválido.
         """
-        # Holding Register (função 06 - single)
-        if tipo == 1:
-            bits = self._cliente.read_holding_registers(address=addr, count=2, device_id=1)
-            bits = self._cliente.convert_from_registers(bits.registers, self._cliente.DATATYPE.BITS)
-            # print(f"Bits antes de mudar: {bits}")
-            bits[valor] = True if bits[valor] == False else False
-            # print(f"Bits depois de mudar: {bits}")
-            registers = self._cliente.convert_to_registers(bits, self._cliente.DATATYPE.BITS)
-            resp = self._cliente.write_registers(address=addr, values=registers, device_id=1)
-            return bool(resp and not resp.isError())
+        match tipo:
+            case 1:  # Holding Register
+                # Lê o estado atual dos bits
+                resp_leitura = self._cliente.read_holding_registers(
+                    address=addr, count=2, device_id=self.device_id
+                )
+                if resp_leitura.isError():
+                    return False
+                
+                bits = self._cliente.convert_from_registers(
+                    resp_leitura.registers, self._cliente.DATATYPE.BITS
+                )
+                
+                # Inversão do bit selecionado
+                bits[bit_pos] = not bits[bit_pos]
+                
+                # Converte de volta e escreve
+                registers = self._cliente.convert_to_registers(
+                    bits, self._cliente.DATATYPE.BITS
+                )
+                resp_escrita = self._cliente.write_registers(
+                    address=addr, values=registers, device_id=self.device_id
+                )
+                return not resp_escrita.isError()
 
-        # Coil (função 05 - single)
-        if tipo == 2:
-            # Em coils, valor esperado é 0/1 (False/True)
-            resp = self._cliente.write_coil(address=addr, value=bool(valor), device_id=1)
-            return bool(resp and not resp.isError())
+            case 2:  # Coil
+                resp = self._cliente.write_coil(
+                    address=addr, value=bool(bit_pos), device_id=self.device_id
+                )
+                return not resp.isError()
 
-        # Tipo inválido
-        return False
+            case _:
+                return False
